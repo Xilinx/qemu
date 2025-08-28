@@ -744,9 +744,8 @@ static uint64_t zdma_read(void *opaque, hwaddr addr, unsigned size)
 
     if (!r->data) {
         char *path = object_get_canonical_path(OBJECT(s));
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
-                 path,
-                 addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: read from %"
+                      HWADDR_PRIx "\n", path, addr);
         g_free(path);
         ARRAY_FIELD_DP32(s->regs, ZDMA_CH_ISR, INV_APB, true);
         zdma_ch_imr_update_irq(s);
@@ -763,9 +762,8 @@ static void zdma_write(void *opaque, hwaddr addr, uint64_t value,
 
     if (!r->data) {
         char *path = object_get_canonical_path(OBJECT(s));
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 path,
-                 addr, value);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: write to %"
+                      HWADDR_PRIx "=%" PRIx64 "\n", path, addr, value);
         g_free(path);
         ARRAY_FIELD_DP32(s->regs, ZDMA_CH_ISR, INV_APB, true);
         zdma_ch_imr_update_irq(s);
