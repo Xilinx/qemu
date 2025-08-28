@@ -850,10 +850,19 @@ static void sink_notify_cb(void *opaque)
     send_aes_payload(s);
 }
 
+/*
+ * Some random bytes. The real device sends constantly changing pseudo-random
+ * mask blocks. Here the mask block is always the same, as DCA counter-measures
+ * are not really a concerns in a QEMU model. However we don't send a constant
+ * zero block as some firmware check that.
+ */
+static const AsuAesBlock SEND_DATA_MASK = {
+    0xee, 0x9a, 0xc7, 0x69, 0xc0, 0x2e, 0xa9, 0x09,
+    0x38, 0xd9, 0xa2, 0x2b, 0x57, 0x16, 0x8b, 0x93,
+};
+
 static bool send_aes_data_mask(XilinxAsuAesState *s)
 {
-    uint8_t zeros[ASU_AES_BLOCK_SIZE];
-
     if (s->mask_sent) {
         return true;
     }
@@ -863,17 +872,42 @@ static bool send_aes_data_mask(XilinxAsuAesState *s)
         return false;
     }
 
-    memset(zeros, 0, sizeof(zeros));
-
     trace_xilinx_asu_aes_send_mask(ASU_AES_BLOCK_SIZE, false);
-    stream_push(s->sink, zeros, sizeof(zeros), false);
+    stream_push(s->sink, (uint8_t *)SEND_DATA_MASK,
+                sizeof(SEND_DATA_MASK), false);
 
     s->mask_sent = true;
     return true;
 }
 
+static void send_aes_data(XilinxAsuAesState *s)
+{
+    AsuAesBlock out;
+
+    trace_xilinx_asu_aes_send(ASU_AES_BLOCK_SIZE, s->eop);
+
+    if (!data_split_enabled(s) && !s->data_swap) {
+        /* no block copy required */
+        stream_push(s->sink, s->aes_ctx.out, ASU_AES_BLOCK_SIZE, s->eop);
+        return;
+    }
+
+    block_copy(out, s->aes_ctx.out);
+
+    if (s->data_swap) {
+        block_bswap(out);
+    }
+
+    if (data_split_enabled(s)) {
+        block_xor(out, out, SEND_DATA_MASK);
+    }
+
+    stream_push(s->sink, out, ASU_AES_BLOCK_SIZE, s->eop);
+}
+
 static void send_aes_payload(XilinxAsuAesState *s)
 {
+
     if (data_split_enabled(s) && !send_aes_data_mask(s)) {
         return;
     }
@@ -883,17 +917,7 @@ static void send_aes_payload(XilinxAsuAesState *s)
         return;
     }
 
-    trace_xilinx_asu_aes_send(ASU_AES_BLOCK_SIZE, s->eop);
-
-    if (s->data_swap) {
-        AsuAesBlock out;
-
-        block_copy(out, s->aes_ctx.out);
-        block_bswap(out);
-        stream_push(s->sink, out, ASU_AES_BLOCK_SIZE, s->eop);
-    } else {
-        stream_push(s->sink, s->aes_ctx.out, ASU_AES_BLOCK_SIZE, s->eop);
-    }
+    send_aes_data(s);
 
     s->ready = true;
 
