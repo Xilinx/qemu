@@ -116,8 +116,15 @@ static void gpi_en_postw(RegisterInfo *reg, uint64_t val64)
     update_irq(s);
 }
 
+static uint64_t gpi_postr(RegisterInfo *reg, uint64_t val64)
+{
+    XilinxGPI *s = XILINX_IO_MODULE_GPI(reg->opaque);
+
+    return val64 & s->ien;
+}
+
 static const RegisterAccessInfo gpi_regs_info[] = {
-    { .name = "GPI", .addr = A_IOM_GPI, .ro = ~0 },
+    { .name = "GPI", .addr = A_IOM_GPI, .ro = ~0, .post_read = gpi_postr },
 };
 
 /*
