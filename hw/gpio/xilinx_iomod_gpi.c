@@ -120,6 +120,16 @@ static const RegisterAccessInfo gpi_regs_info[] = {
     { .name = "GPI", .addr = A_IOM_GPI, .ro = ~0 },
 };
 
+/*
+ * This register does not belong to this device. It is a hack to easily
+ * implement the corresponding mask register found in the ZynqMP PMU_LOCAL
+ * device (GPIx_ENABLE registers). The memory region corresponding to this
+ * register is mapped on top of the PMU_LOCAL one at the correct offset,
+ * effectively shadowing the GPIx_ENABLE register.
+ *
+ * A proper fix would consist in rewiring the GPIOs so that they go through the
+ * PMU_LOCAL device. They could then be masked from there.
+ */
 static const RegisterAccessInfo gpi_en_regs_info[] = {
     { .name = "GPI_ENABLE", .addr = 0, .post_write = gpi_en_postw },
 };
