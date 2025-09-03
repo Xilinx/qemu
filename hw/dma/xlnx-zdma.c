@@ -195,6 +195,52 @@ REG32(ZDMA_CH_IDS, 0x0c)
     FIELD(ZDMA_CH_IDS, INV_APB, 0, 1)
 #define ZDMA_R_INTR (R_ZDMA_CH_IDS + 1)
 
+/* Versal Gen 2 Error registers */
+REG32(ZDMA_ERR_STS, 0x100)
+    FIELD(ZDMA_ERR_STS, REG_PAR_MON_ERR1, 9, 1)
+    FIELD(ZDMA_ERR_STS, REG_PAR_MON_ERR0, 8, 1)
+    FIELD(ZDMA_ERR_STS, CRC_ERR, 7, 1)
+    FIELD(ZDMA_ERR_STS, LINK_LIST_PERR, 6, 1)
+    FIELD(ZDMA_ERR_STS, FREE_LIST_PERR, 5, 1)
+    FIELD(ZDMA_ERR_STS, WRBUF_PERR, 4, 1)
+    FIELD(ZDMA_ERR_STS, AXI_WR_DATA, 3, 1)
+    FIELD(ZDMA_ERR_STS, AXI_RD_DATA, 2, 1)
+    FIELD(ZDMA_ERR_STS, AXI_RD_DST_DSCR, 1, 1)
+    FIELD(ZDMA_ERR_STS, AXI_RD_SRC_DSCR, 0, 1)
+REG32(ZDMA_ERR_MASK, 0x104)
+    FIELD(ZDMA_ERR_MASK, REG_PAR_MON_ERR1, 9, 1)
+    FIELD(ZDMA_ERR_MASK, REG_PAR_MON_ERR0, 8, 1)
+    FIELD(ZDMA_ERR_MASK, CRC_ERR, 7, 1)
+    FIELD(ZDMA_ERR_MASK, LINK_LIST_PERR, 6, 1)
+    FIELD(ZDMA_ERR_MASK, FREE_LIST_PERR, 5, 1)
+    FIELD(ZDMA_ERR_MASK, WRBUF_PERR, 4, 1)
+    FIELD(ZDMA_ERR_MASK, AXI_WR_DATA, 3, 1)
+    FIELD(ZDMA_ERR_MASK, AXI_RD_DATA, 2, 1)
+    FIELD(ZDMA_ERR_MASK, AXI_RD_DST_DSCR, 1, 1)
+    FIELD(ZDMA_ERR_MASK, AXI_RD_SRC_DSCR, 0, 1)
+REG32(ZDMA_ERR_EN, 0x108)
+    FIELD(ZDMA_ERR_EN, REG_PAR_MON_ERR1, 9, 1)
+    FIELD(ZDMA_ERR_EN, REG_PAR_MON_ERR0, 8, 1)
+    FIELD(ZDMA_ERR_EN, CRC_ERR, 7, 1)
+    FIELD(ZDMA_ERR_EN, LINK_LIST_PERR, 6, 1)
+    FIELD(ZDMA_ERR_EN, FREE_LIST_PERR, 5, 1)
+    FIELD(ZDMA_ERR_EN, WRBUF_PERR, 4, 1)
+    FIELD(ZDMA_ERR_EN, AXI_WR_DATA, 3, 1)
+    FIELD(ZDMA_ERR_EN, AXI_RD_DATA, 2, 1)
+    FIELD(ZDMA_ERR_EN, AXI_RD_DST_DSCR, 1, 1)
+    FIELD(ZDMA_ERR_EN, AXI_RD_SRC_DSCR, 0, 1)
+REG32(ZDMA_ERR_DIS, 0x10c)
+    FIELD(ZDMA_ERR_DIS, REG_PAR_MON_ERR1, 9, 1)
+    FIELD(ZDMA_ERR_DIS, REG_PAR_MON_ERR0, 8, 1)
+    FIELD(ZDMA_ERR_DIS, CRC_ERR, 7, 1)
+    FIELD(ZDMA_ERR_DIS, LINK_LIST_PERR, 6, 1)
+    FIELD(ZDMA_ERR_DIS, FREE_LIST_PERR, 5, 1)
+    FIELD(ZDMA_ERR_DIS, WRBUF_PERR, 4, 1)
+    FIELD(ZDMA_ERR_DIS, AXI_WR_DATA, 3, 1)
+    FIELD(ZDMA_ERR_DIS, AXI_RD_DATA, 2, 1)
+    FIELD(ZDMA_ERR_DIS, AXI_RD_DST_DSCR, 1, 1)
+    FIELD(ZDMA_ERR_DIS, AXI_RD_SRC_DSCR, 0, 1)
+
 enum {
     PT_REG = 0,
     PT_MEM = 1,
@@ -731,6 +777,21 @@ static RegisterAccessInfo zdma_intr_regs_info[] = {
     }
 };
 
+static RegisterAccessInfo zdma_err_regs_info[] = {
+    {   .name = "ZDMA_ERR_STS",  .addr = A_ZDMA_ERR_STS,
+        .rsvd = 0xfffffc00,
+        .w1c = 0x3ff,
+    },{ .name = "ZDMA_ERR_MASK",  .addr = A_ZDMA_ERR_MASK,
+        .reset = 0x3ff,
+        .rsvd = 0xfffffc00,
+        .ro = 0x3ff,
+    },{ .name = "ZDMA_ERR_EN",  .addr = A_ZDMA_ERR_EN,
+        .rsvd = 0xfffffc00,
+    },{ .name = "ZDMA_ERR_DIS",  .addr = A_ZDMA_ERR_DIS,
+        .rsvd = 0xfffffc00,
+    }
+};
+
 static void zdma_reset(DeviceState *dev)
 {
     XlnxZDMA *sv1 = XLNX_ZDMA(dev);
@@ -741,6 +802,21 @@ static void zdma_reset(DeviceState *dev)
         register_reset(&sv1->regs_info[i]);
     }
 
+    s->regs_intr[R_ZDMA_CH_IMR] =
+                 zdma_non_parity_mask(s, s->regs_intr[R_ZDMA_CH_IMR]);
+
+    zdma_ch_imr_update_irq(s);
+}
+
+static void zdma_v2_reset(DeviceState *dev)
+{
+    XlnxZDMAV2 *sv2 = XLNX_ZDMA_V2(dev);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(dev);
+    unsigned int i;
+
+    for (i = 0; i < ARRAY_SIZE(sv2->regs_info); ++i) {
+        register_reset(&sv2->regs_info[i]);
+    }
     s->regs_intr[R_ZDMA_CH_IMR] =
                  zdma_non_parity_mask(s, s->regs_intr[R_ZDMA_CH_IMR]);
 
@@ -865,6 +941,31 @@ static void zdma_realize(DeviceState *dev, Error **errp)
                        ZDMA_V1_INTR_OFFSET);
 }
 
+static void zdma_v2_realize(DeviceState *dev, Error **errp)
+{
+    XlnxZDMAV2 *sv2 = XLNX_ZDMA_V2(dev);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(dev);
+
+    zdma_common_realize(dev, errp);
+    if (*errp) {
+        return;
+    }
+
+    s->regs_intr =  &sv2->regs[ZDMA_V2_INTR_OFFSET / 4];
+    s->regs = sv2->regs;
+
+    zdma_populate_regs(dev, sv2->regs_info, sv2->regs, s->reg_array,
+                       zdma_regs_info, ARRAY_SIZE(zdma_regs_info), 0x0);
+
+    zdma_populate_regs(dev, sv2->regs_info, sv2->regs, s->reg_array,
+                       zdma_intr_regs_info, ARRAY_SIZE(zdma_intr_regs_info),
+                       ZDMA_V2_INTR_OFFSET);
+
+    zdma_populate_regs(dev, sv2->regs_info, sv2->regs, s->reg_array,
+                       zdma_err_regs_info,
+                       ARRAY_SIZE(zdma_err_regs_info), 0x0);
+}
+
 static void zdma_init(Object *obj)
 {
     XlnxZDMABase *s = XLNX_ZDMA_BASE(obj);
@@ -883,6 +984,24 @@ static void zdma_init(Object *obj)
                              OBJ_PROP_LINK_STRONG);
 }
 
+static void zdma_v2_init(Object *obj)
+{
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(obj);
+    XlnxZDMAV2 *sv2 = XLNX_ZDMA_V2(obj);
+
+    s->reg_array = g_new0(RegisterInfoArray, 1);
+    s->reg_array->r = g_new0(RegisterInfo *, ZDMA_V2_R_MAX);
+    s->reg_array->num_elements = ZDMA_V2_R_MAX;
+
+    memory_region_init_io(&s->reg_array->mem, OBJECT(sv2), &zdma_ops, sv2,
+                          TYPE_XLNX_ZDMA_V2, ZDMA_V2_R_MAX * 4);
+
+    object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->attr_ptr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+}
+
 static const VMStateDescription vmstate_zdma = {
     .name = TYPE_XLNX_ZDMA,
     .version_id = 1,
@@ -892,6 +1011,19 @@ static const VMStateDescription vmstate_zdma = {
         VMSTATE_UINT32(parent_obj.state, XlnxZDMA),
         VMSTATE_UINT32_ARRAY(parent_obj.dsc_src.words, XlnxZDMA, 4),
         VMSTATE_UINT32_ARRAY(parent_obj.dsc_dst.words, XlnxZDMA, 4),
+        VMSTATE_END_OF_LIST(),
+    }
+};
+
+static const VMStateDescription vmstate_zdma_v2 = {
+    .name = TYPE_XLNX_ZDMA_V2,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, XlnxZDMAV2, ZDMA_V2_R_MAX),
+        VMSTATE_UINT32(parent_obj.state, XlnxZDMAV2),
+        VMSTATE_UINT32_ARRAY(parent_obj.dsc_src.words, XlnxZDMAV2, 4),
+        VMSTATE_UINT32_ARRAY(parent_obj.dsc_dst.words, XlnxZDMAV2, 4),
         VMSTATE_END_OF_LIST(),
     }
 };
@@ -914,6 +1046,16 @@ static void zdma_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_zdma;
 }
 
+static void zdma_v2_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+
+    dc->realize = zdma_v2_realize;
+    dc->reset = zdma_v2_reset;
+    device_class_set_props(dc, zdma_props);
+    dc->vmsd = &vmstate_zdma_v2;
+}
+
 static const TypeInfo zdma_base_info = {
     .name          = TYPE_XLNX_ZDMA_BASE,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -929,10 +1071,19 @@ static const TypeInfo zdma_info = {
     .instance_init = zdma_init,
 };
 
+static const TypeInfo zdma_v2_info = {
+    .name          = TYPE_XLNX_ZDMA_V2,
+    .parent        = TYPE_XLNX_ZDMA_BASE,
+    .instance_size = sizeof(XlnxZDMAV2),
+    .class_init    = zdma_v2_class_init,
+    .instance_init = zdma_v2_init,
+};
+
 static void zdma_register_types(void)
 {
     type_register_static(&zdma_base_info);
     type_register_static(&zdma_info);
+    type_register_static(&zdma_v2_info);
 }
 
 type_init(zdma_register_types)

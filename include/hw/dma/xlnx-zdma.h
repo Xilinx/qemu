@@ -35,8 +35,11 @@
 #include "qom/object.h"
 
 #define ZDMA_R_MAX (0x204 / 4)
+#define ZDMA_V2_R_MAX (0x41c / 4)
+#define ZDMA_INTR_R_MAX (0x10 / 4)
 
 #define ZDMA_V1_INTR_OFFSET 0x100
+#define ZDMA_V2_INTR_OFFSET 0x408
 
 typedef enum {
     DISABLED = 0,
@@ -86,13 +89,21 @@ struct XlnxZDMA {
 
     uint32_t regs[ZDMA_R_MAX];
     RegisterInfo regs_info[ZDMA_R_MAX];
+};
 
+struct XlnxZDMAV2 {
+    struct XlnxZDMABase parent_obj;
+
+    uint32_t regs[ZDMA_V2_R_MAX];
+    RegisterInfo regs_info[ZDMA_V2_R_MAX];
 };
 
 #define TYPE_XLNX_ZDMA "xlnx.zdma"
 #define TYPE_XLNX_ZDMA_BASE "xlnx-zdma-base"
+#define TYPE_XLNX_ZDMA_V2 "xlnx.zdma-v2"
 
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxZDMA, XLNX_ZDMA)
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxZDMABase, XLNX_ZDMA_BASE)
+OBJECT_DECLARE_SIMPLE_TYPE(XlnxZDMAV2, XLNX_ZDMA_V2)
 
 #endif /* XLNX_ZDMA_H */
