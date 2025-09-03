@@ -218,7 +218,7 @@ enum {
     AXI_BURST_INCR  = 1,
 };
 
-static inline uint32_t zdma_non_parity_mask(XlnxZDMA *s,  uint32_t val)
+static inline uint32_t zdma_non_parity_mask(XlnxZDMABase *s,  uint32_t val)
 {
     if (!s->cfg.has_parity) {
         val &= 0xfff;
@@ -226,7 +226,7 @@ static inline uint32_t zdma_non_parity_mask(XlnxZDMA *s,  uint32_t val)
     return val;
 }
 
-static void zdma_ch_imr_update_irq(XlnxZDMA *s)
+static void zdma_ch_imr_update_irq(XlnxZDMABase *s)
 {
     bool pending;
 
@@ -237,13 +237,13 @@ static void zdma_ch_imr_update_irq(XlnxZDMA *s)
 
 static void zdma_ch_isr_postw(RegisterInfo *reg, uint64_t val64)
 {
-    XlnxZDMA *s = XLNX_ZDMA(reg->opaque);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(reg->opaque);
     zdma_ch_imr_update_irq(s);
 }
 
 static uint64_t zdma_ch_ien_prew(RegisterInfo *reg, uint64_t val64)
 {
-    XlnxZDMA *s = XLNX_ZDMA(reg->opaque);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(reg->opaque);
     uint32_t val = val64;
 
     s->regs[R_ZDMA_CH_IMR] &= ~val;
@@ -253,7 +253,7 @@ static uint64_t zdma_ch_ien_prew(RegisterInfo *reg, uint64_t val64)
 
 static uint64_t zdma_ch_ids_prew(RegisterInfo *reg, uint64_t val64)
 {
-    XlnxZDMA *s = XLNX_ZDMA(reg->opaque);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(reg->opaque);
     uint32_t val = val64;
 
     val = zdma_non_parity_mask(s, val);
@@ -263,7 +263,7 @@ static uint64_t zdma_ch_ids_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static void zdma_set_state(XlnxZDMA *s, XlnxZDMAState state)
+static void zdma_set_state(XlnxZDMABase *s, XlnxZDMAState state)
 {
     s->state = state;
     ARRAY_FIELD_DP32(s->regs, ZDMA_CH_STATUS, STATE, state);
@@ -274,7 +274,7 @@ static void zdma_set_state(XlnxZDMA *s, XlnxZDMAState state)
     }
 }
 
-static void zdma_src_done(XlnxZDMA *s)
+static void zdma_src_done(XlnxZDMABase *s)
 {
     unsigned int cnt;
     cnt = ARRAY_FIELD_EX32(s->regs, ZDMA_CH_IRQ_SRC_ACCT, CNT);
@@ -289,7 +289,7 @@ static void zdma_src_done(XlnxZDMA *s)
     zdma_ch_imr_update_irq(s);
 }
 
-static void zdma_dst_done(XlnxZDMA *s)
+static void zdma_dst_done(XlnxZDMABase *s)
 {
     unsigned int cnt;
     cnt = ARRAY_FIELD_EX32(s->regs, ZDMA_CH_IRQ_DST_ACCT, CNT);
@@ -304,7 +304,7 @@ static void zdma_dst_done(XlnxZDMA *s)
     zdma_ch_imr_update_irq(s);
 }
 
-static uint64_t zdma_get_regaddr64(XlnxZDMA *s, unsigned int basereg)
+static uint64_t zdma_get_regaddr64(XlnxZDMABase *s, unsigned int basereg)
 {
     uint64_t addr;
 
@@ -315,13 +315,14 @@ static uint64_t zdma_get_regaddr64(XlnxZDMA *s, unsigned int basereg)
     return addr;
 }
 
-static void zdma_put_regaddr64(XlnxZDMA *s, unsigned int basereg, uint64_t addr)
+static void zdma_put_regaddr64(XlnxZDMABase *s, unsigned int basereg,
+                               uint64_t addr)
 {
     s->regs[basereg] = addr;
     s->regs[basereg + 1] = addr >> 32;
 }
 
-static void zdma_load_descriptor_reg(XlnxZDMA *s, unsigned int reg,
+static void zdma_load_descriptor_reg(XlnxZDMABase *s, unsigned int reg,
                                      XlnxZDMADescr *descr)
 {
     descr->addr = zdma_get_regaddr64(s, reg);
@@ -329,7 +330,7 @@ static void zdma_load_descriptor_reg(XlnxZDMA *s, unsigned int reg,
     descr->attr = s->regs[reg + 3];
 }
 
-static bool zdma_load_descriptor(XlnxZDMA *s, uint64_t addr,
+static bool zdma_load_descriptor(XlnxZDMABase *s, uint64_t addr,
                                  XlnxZDMADescr *descr)
 {
     /* ZDMA descriptors must be aligned to their own size.  */
@@ -348,7 +349,7 @@ static bool zdma_load_descriptor(XlnxZDMA *s, uint64_t addr,
     return true;
 }
 
-static void zdma_load_src_descriptor(XlnxZDMA *s)
+static void zdma_load_src_descriptor(XlnxZDMABase *s)
 {
     uint64_t src_addr;
     unsigned int ptype = ARRAY_FIELD_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
@@ -365,7 +366,7 @@ static void zdma_load_src_descriptor(XlnxZDMA *s)
     }
 }
 
-static void zdma_update_descr_addr(XlnxZDMA *s, bool type,
+static void zdma_update_descr_addr(XlnxZDMABase *s, bool type,
                                    unsigned int basereg)
 {
     uint64_t addr, next;
@@ -382,7 +383,7 @@ static void zdma_update_descr_addr(XlnxZDMA *s, bool type,
     zdma_put_regaddr64(s, basereg, next);
 }
 
-static void zdma_load_dst_descriptor(XlnxZDMA *s)
+static void zdma_load_dst_descriptor(XlnxZDMABase *s)
 {
     uint64_t dst_addr;
     unsigned int ptype = ARRAY_FIELD_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
@@ -404,7 +405,7 @@ static void zdma_load_dst_descriptor(XlnxZDMA *s)
     zdma_update_descr_addr(s, dst_type, R_ZDMA_CH_DST_CUR_DSCR_LSB);
 }
 
-static void zdma_write_dst(XlnxZDMA *s, uint8_t *buf, uint32_t len)
+static void zdma_write_dst(XlnxZDMABase *s, uint8_t *buf, uint32_t len)
 {
     uint32_t dst_size, dlen;
     bool dst_intr;
@@ -463,7 +464,7 @@ static void zdma_write_dst(XlnxZDMA *s, uint8_t *buf, uint32_t len)
     }
 }
 
-static void zdma_process_descr(XlnxZDMA *s)
+static void zdma_process_descr(XlnxZDMABase *s)
 {
     uint64_t src_addr;
     uint32_t src_size, len;
@@ -555,7 +556,7 @@ static void zdma_process_descr(XlnxZDMA *s)
     zdma_update_descr_addr(s, src_type, R_ZDMA_CH_SRC_CUR_DSCR_LSB);
 }
 
-static void zdma_run(XlnxZDMA *s)
+static void zdma_run(XlnxZDMABase *s)
 {
     while (s->state == ENABLED && !s->error) {
         zdma_load_src_descriptor(s);
@@ -570,7 +571,7 @@ static void zdma_run(XlnxZDMA *s)
     zdma_ch_imr_update_irq(s);
 }
 
-static void zdma_update_descr_addr_from_start(XlnxZDMA *s)
+static void zdma_update_descr_addr_from_start(XlnxZDMABase *s)
 {
     uint64_t src_addr, dst_addr;
 
@@ -583,7 +584,7 @@ static void zdma_update_descr_addr_from_start(XlnxZDMA *s)
 
 static void zdma_ch_ctrlx_postw(RegisterInfo *reg, uint64_t val64)
 {
-    XlnxZDMA *s = XLNX_ZDMA(reg->opaque);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(reg->opaque);
 
     if (ARRAY_FIELD_EX32(s->regs, ZDMA_CH_CTRL2, EN)) {
         s->error = false;
@@ -725,11 +726,12 @@ static RegisterAccessInfo zdma_regs_info[] = {
 
 static void zdma_reset(DeviceState *dev)
 {
-    XlnxZDMA *s = XLNX_ZDMA(dev);
+    XlnxZDMA *sv1 = XLNX_ZDMA(dev);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(dev);
     unsigned int i;
 
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+    for (i = 0; i < ARRAY_SIZE(sv1->regs_info); ++i) {
+        register_reset(&sv1->regs_info[i]);
     }
 
     s->regs[R_ZDMA_CH_IMR] = zdma_non_parity_mask(s, s->regs[R_ZDMA_CH_IMR]);
@@ -739,10 +741,10 @@ static void zdma_reset(DeviceState *dev)
 
 static uint64_t zdma_read(void *opaque, hwaddr addr, unsigned size)
 {
-    XlnxZDMA *s = XLNX_ZDMA(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(opaque);
+    RegisterInfo *r = s->reg_array->r[addr / 4];
 
-    if (!r->data) {
+    if (!r) {
         char *path = object_get_canonical_path(OBJECT(s));
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: read from %"
                       HWADDR_PRIx "\n", path, addr);
@@ -757,10 +759,10 @@ static uint64_t zdma_read(void *opaque, hwaddr addr, unsigned size)
 static void zdma_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
-    XlnxZDMA *s = XLNX_ZDMA(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(opaque);
+    RegisterInfo *r = s->reg_array->r[addr / 4];
 
-    if (!r->data) {
+    if (!r) {
         char *path = object_get_canonical_path(OBJECT(s));
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: write to %"
                       HWADDR_PRIx "=%" PRIx64 "\n", path, addr, value);
@@ -784,15 +786,38 @@ static const MemoryRegionOps zdma_ops = {
 
 static void zdma_set_sec(void *opaque, int n, int level)
 {
-    XlnxZDMA *s = XLNX_ZDMA(opaque);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(opaque);
 
     s->attr.secure = level;
 }
 
-static void zdma_realize(DeviceState *dev, Error **errp)
+static void zdma_populate_regs(DeviceState *owner, RegisterInfo *reg_info,
+                               uint32_t *reg_data, RegisterInfoArray *reg_array,
+                               RegisterAccessInfo *rae, size_t num_regs,
+                               uint32_t regs_offset)
 {
-    XlnxZDMA *s = XLNX_ZDMA(dev);
     unsigned int i;
+
+    for (i = 0; i < num_regs ; i++) {
+        int index = (regs_offset + rae[i].addr) / 4;
+        RegisterInfo *r = &reg_info[index];
+
+        object_initialize((void *)r, sizeof(*r), TYPE_REGISTER);
+
+        *r = (RegisterInfo) {
+            .data = (uint8_t *)&reg_data[index],
+            .data_size = sizeof(uint32_t),
+            .access = &rae[i],
+            .opaque = owner,
+        };
+        reg_array->r[index] = r;
+    }
+}
+
+static void zdma_common_realize(DeviceState *dev, Error **errp)
+{
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
     if (!s->dma_mr) {
         error_setg(errp, TYPE_XLNX_ZDMA " 'dma' link not set");
@@ -800,35 +825,45 @@ static void zdma_realize(DeviceState *dev, Error **errp)
     }
     address_space_init(&s->dma_as, s->dma_mr, "zdma-dma");
 
-    for (i = 0; i < ARRAY_SIZE(zdma_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[zdma_regs_info[i].addr / 4];
-
-        *r = (RegisterInfo) {
-            .data = (uint8_t *)&s->regs[
-                    zdma_regs_info[i].addr / 4],
-            .data_size = sizeof(uint32_t),
-            .access = &zdma_regs_info[i],
-            .opaque = s,
-        };
-    }
-
     s->attr = MEMTXATTRS_UNSPECIFIED;
     if (s->attr_ptr) {
         s->attr = *s->attr_ptr;
     }
 
+    sysbus_init_mmio(sbd, &s->reg_array->mem);
+    sysbus_init_irq(sbd, &s->irq_zdma_ch_imr);
+
     qdev_init_gpio_in_named(dev, zdma_set_sec, "memattr-secure", 1);
+}
+
+static void zdma_realize(DeviceState *dev, Error **errp)
+{
+    XlnxZDMA *sv1 = XLNX_ZDMA(dev);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(dev);
+
+    zdma_common_realize(dev, errp);
+    if (*errp) {
+        return;
+    }
+
+    s->regs = sv1->regs;
+
+    zdma_populate_regs(dev, sv1->regs_info, sv1->regs, s->reg_array,
+                       zdma_regs_info, ARRAY_SIZE(zdma_regs_info), 0x0);
 }
 
 static void zdma_init(Object *obj)
 {
-    XlnxZDMA *s = XLNX_ZDMA(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    XlnxZDMABase *s = XLNX_ZDMA_BASE(obj);
+    XlnxZDMA *sv1 = XLNX_ZDMA(obj);
 
-    memory_region_init_io(&s->iomem, obj, &zdma_ops, s,
+    s->reg_array = g_new0(RegisterInfoArray, 1);
+    s->reg_array->r = g_new0(RegisterInfo *, ZDMA_R_MAX);
+    s->reg_array->num_elements = ZDMA_R_MAX;
+
+    memory_region_init_io(&s->reg_array->mem, OBJECT(sv1), &zdma_ops, sv1,
                           TYPE_XLNX_ZDMA, ZDMA_R_MAX * 4);
-    sysbus_init_mmio(sbd, &s->iomem);
-    sysbus_init_irq(sbd, &s->irq_zdma_ch_imr);
+
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&s->attr_ptr,
                              qdev_prop_allow_set_link_before_realize,
@@ -841,18 +876,18 @@ static const VMStateDescription vmstate_zdma = {
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XlnxZDMA, ZDMA_R_MAX),
-        VMSTATE_UINT32(state, XlnxZDMA),
-        VMSTATE_UINT32_ARRAY(dsc_src.words, XlnxZDMA, 4),
-        VMSTATE_UINT32_ARRAY(dsc_dst.words, XlnxZDMA, 4),
+        VMSTATE_UINT32(parent_obj.state, XlnxZDMA),
+        VMSTATE_UINT32_ARRAY(parent_obj.dsc_src.words, XlnxZDMA, 4),
+        VMSTATE_UINT32_ARRAY(parent_obj.dsc_dst.words, XlnxZDMA, 4),
         VMSTATE_END_OF_LIST(),
     }
 };
 
 static Property zdma_props[] = {
-    DEFINE_PROP_UINT32("bus-width", XlnxZDMA, cfg.bus_width, 64),
-    DEFINE_PROP_LINK("dma", XlnxZDMA, dma_mr,
+    DEFINE_PROP_UINT32("bus-width", XlnxZDMABase, cfg.bus_width, 64),
+    DEFINE_PROP_LINK("dma", XlnxZDMABase, dma_mr,
                      TYPE_MEMORY_REGION, MemoryRegion *),
-    DEFINE_PROP_BOOL("has-parity", XlnxZDMA, cfg.has_parity, 0),
+    DEFINE_PROP_BOOL("has-parity", XlnxZDMABase, cfg.has_parity, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -866,9 +901,16 @@ static void zdma_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_zdma;
 }
 
+static const TypeInfo zdma_base_info = {
+    .name          = TYPE_XLNX_ZDMA_BASE,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(XlnxZDMABase),
+    .abstract      = true,
+};
+
 static const TypeInfo zdma_info = {
     .name          = TYPE_XLNX_ZDMA,
-    .parent        = TYPE_SYS_BUS_DEVICE,
+    .parent        = TYPE_XLNX_ZDMA_BASE,
     .instance_size = sizeof(XlnxZDMA),
     .class_init    = zdma_class_init,
     .instance_init = zdma_init,
@@ -876,6 +918,7 @@ static const TypeInfo zdma_info = {
 
 static void zdma_register_types(void)
 {
+    type_register_static(&zdma_base_info);
     type_register_static(&zdma_info);
 }
 

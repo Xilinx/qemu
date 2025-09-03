@@ -51,14 +51,14 @@ typedef union {
     uint32_t words[4];
 } XlnxZDMADescr;
 
-struct XlnxZDMA {
+struct XlnxZDMABase {
     SysBusDevice parent_obj;
-    MemoryRegion iomem;
     MemTxAttrs *attr_ptr;
     MemTxAttrs attr;
     MemoryRegion *dma_mr;
     AddressSpace dma_as;
     qemu_irq irq_zdma_ch_imr;
+    RegisterInfoArray *reg_array;
 
     struct {
         uint32_t bus_width;
@@ -71,16 +71,25 @@ struct XlnxZDMA {
     XlnxZDMADescr dsc_src;
     XlnxZDMADescr dsc_dst;
 
-    uint32_t regs[ZDMA_R_MAX];
-    RegisterInfo regs_info[ZDMA_R_MAX];
-
     /* We don't model the common bufs. Must be at least 16 bytes
        to model write only mode.  */
     uint8_t buf[2048];
+
+    uint32_t *regs;
+};
+
+struct XlnxZDMA {
+    struct XlnxZDMABase parent_obj;
+
+    uint32_t regs[ZDMA_R_MAX];
+    RegisterInfo regs_info[ZDMA_R_MAX];
+
 };
 
 #define TYPE_XLNX_ZDMA "xlnx.zdma"
+#define TYPE_XLNX_ZDMA_BASE "xlnx-zdma-base"
 
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxZDMA, XLNX_ZDMA)
+OBJECT_DECLARE_SIMPLE_TYPE(XlnxZDMABase, XLNX_ZDMA_BASE)
 
 #endif /* XLNX_ZDMA_H */
