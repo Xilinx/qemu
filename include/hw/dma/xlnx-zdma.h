@@ -36,6 +36,8 @@
 
 #define ZDMA_R_MAX (0x204 / 4)
 
+#define ZDMA_V1_INTR_OFFSET 0x100
+
 typedef enum {
     DISABLED = 0,
     ENABLED = 1,
@@ -76,6 +78,7 @@ struct XlnxZDMABase {
     uint8_t buf[2048];
 
     uint32_t *regs;
+    uint32_t *regs_intr;
 };
 
 struct XlnxZDMA {
