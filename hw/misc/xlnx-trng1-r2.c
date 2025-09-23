@@ -159,9 +159,7 @@ static bool xlnx_trng1r2_tst_mode(XlnxTRng1r2 *s)
 
 static bool xlnx_trng1r2_eu_mode(XlnxTRng1r2 *s)
 {
-    /* Supported only in TSTMODE to read back injected entropy */
-    return ARRAY_FIELD_EX32(s->regs, CTRL, EUMODE)
-           && xlnx_trng1r2_tst_mode(s);
+    return ARRAY_FIELD_EX32(s->regs, CTRL, EUMODE);
 }
 
 static bool xlnx_trng1r2_gen_mode(XlnxTRng1r2 *s)
@@ -279,7 +277,7 @@ static uint32_t xlnx_trng1r2_tstent_u32(XlnxTRng1r2 *s)
 {
     size_t i, o;
 
-    if (!xlnx_trng1r2_eu_mode(s)) {
+    if (!xlnx_trng1r2_tst_mode(s)) {
         return 0;
     }
 
@@ -312,14 +310,14 @@ static void xlnx_trng1r2_tstent_collect(XlnxTRng1r2 *s)
     s->entropy.test_input_vld = 0;
 
     /* Indicate available for readback */
-    if (xlnx_trng1r2_eu_mode(s)) {
+    if (xlnx_trng1r2_tst_mode(s) && xlnx_trng1r2_eu_mode(s)) {
         xlnx_trng1r2_set_wcnt(s, (s->entropy.test_input->len / 4));
     }
 }
 
 static void xlnx_trng1r2_tstent_clr(XlnxTRng1r2 *s)
 {
-    if (xlnx_trng1r2_eu_mode(s)) {
+    if (xlnx_trng1r2_tst_mode(s)) {
         xlnx_trng1r2_set_wcnt(s, 0);
     }
 
@@ -505,12 +503,63 @@ static uint32_t xlnx_trng1r2_get32(XlnxTRng1r2 *s)
     return n;
 }
 
+static void xlnx_trng1r2_eumode_clear(XlnxTRng1r2 *s)
+{
+    s->entropy.test_output = 0;
+    if (s->entropy.test_input) {
+        g_autoptr(GArray) eu = s->entropy.test_input;
+        s->entropy.test_input = NULL;
+    }
+
+    ARRAY_FIELD_DP32(s->regs, STATUS, QCNT, 0);
+    xlnx_trng1r2_clr_done(s);
+}
+
+static void xlnx_trng1r2_eumode_refill(XlnxTRng1r2 *s)
+{
+    g_autoptr(GArray) eu_entropy = xlnx_trng1r2_entropy(s);
+    if (eu_entropy->len >= 16) {
+        xlnx_trng1r2_eumode_clear(s);
+
+        s->entropy.test_input = g_array_new(false, false, 1);
+        g_array_append_vals(s->entropy.test_input, eu_entropy->data, 16);
+
+        ARRAY_FIELD_DP32(s->regs, STATUS, QCNT, 4);
+        xlnx_trng1r2_set_done(s);
+    }
+}
+
+static uint32_t xlnx_trng1r2_eumode_u32(XlnxTRng1r2 *s)
+{
+    uint32_t n;
+
+    if (s->entropy.test_input && s->entropy.test_input->len >= 4) {
+        n = ldl_be_p(s->entropy.test_input->data);
+        g_array_remove_range(s->entropy.test_input, 0, 4);
+
+        xlnx_trng1r2_set_wcnt(s, (s->entropy.test_input->len / 4));
+
+        /* The core continues to collect the raw entropy data and refill */
+        if (s->entropy.test_input->len == 0) {
+            xlnx_trng1r2_eumode_refill(s);
+        }
+        return n;
+    }
+    return 0;
+}
+
 static uint32_t xlnx_trng1r2_core_output(XlnxTRng1r2 *s)
 {
     uint32_t n;
 
     if (xlnx_trng1r2_eu_mode(s)) {
-        return xlnx_trng1r2_tstent_u32(s);
+        if (xlnx_trng1r2_tst_mode(s)) {
+            /* Return injected entropy in TSTmode */
+            return xlnx_trng1r2_tstent_u32(s);
+        } else {
+            /* Return raw entropy data */
+            return xlnx_trng1r2_eumode_u32(s);
+        }
     }
 
     if (xlnx_trng1r2_is_nonstop(s)) {
@@ -655,8 +704,11 @@ static void xlnx_trng1r2_ctrl_updated(XlnxTRng1r2 *s,
     if (FIELD_EX32(to_0s, CTRL, TSTMODE)) {
         xlnx_trng1r2_tstent_clr(s);
     }
+    if (xlnx_trng1r2_eu_mode(s) && !ARRAY_FIELD_EX32(s->regs, CTRL, TSTMODE)) {
+        xlnx_trng1r2_eumode_refill(s);
+    }
     if (FIELD_EX32(to_0s, CTRL, EUMODE)) {
-        xlnx_trng1r2_set_wcnt(s, 0);
+        xlnx_trng1r2_eumode_clear(s);
     }
 
     /* Any toggle is a potential source causing STATUS.DONE to be cleared */
