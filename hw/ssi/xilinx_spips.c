@@ -986,6 +986,7 @@ static void xilinx_spips_write(void *opaque, hwaddr addr,
     int mask = ~0;
     XilinxSPIPS *s = opaque;
     bool try_flush = true;
+    XilinxSPIPSClass *xspic = XILINX_SPIPS_GET_CLASS(s);
 
     DB_PRINT_L(0, "addr=" HWADDR_FMT_plx " = %x\n", addr, (unsigned)value);
     addr >>= 2;
@@ -1015,6 +1016,12 @@ static void xilinx_spips_write(void *opaque, hwaddr addr,
         break;
     case R_SLAVE_IDLE_COUNT:
         mask = 0xFF;
+        break;
+    case R_TX_THRES:
+        mask = xspic->tx_fifo_size - 1;
+        break;
+    case R_RX_THRES:
+        mask = xspic->rx_fifo_size - 1;
         break;
     case R_RX_DATA:
     case R_INTR_MASK:
