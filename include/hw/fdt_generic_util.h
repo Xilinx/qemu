@@ -198,18 +198,21 @@ static const FDTGenericGPIOSet default_gpio_sets [] = {
       .names = &fdt_generic_gpio_name_set_reset_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "rst_cntrl", .fdt_index = 0, .range = 6 },
+        { },
       },
     },
     {
       .names = &fdt_generic_gpio_name_set_resets,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "rst_cntrl", .fdt_index = 0, .range = 6 },
+        { },
       },
     },
     {
       .names = &fdt_generic_gpio_name_set_power_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "pwr_cntrl", .fdt_index = 0, .range = 1 },
+        { },
       },
     },
     { .names = &fdt_generic_gpio_name_set_interrupts },
