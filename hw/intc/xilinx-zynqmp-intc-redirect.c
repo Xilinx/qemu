@@ -70,7 +70,7 @@ static void intc_redirect_update_irqs(void *opaque)
 
     /* Always propagate IRQs between GIC and APU.  */
     for (i = 0; i < NUM_LINES_FROM_GIC; i++) {
-        qemu_set_irq(s->cpu_out[i], !!(s->irq_in & (1U << i)));
+        qemu_set_irq(s->cpu_out[i], !!(s->irq_in & (1ULL << i)));
     }
 }
 
