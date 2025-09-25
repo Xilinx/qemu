@@ -2062,7 +2062,6 @@ exit_reg_parse:
             const char *gpio_name = NULL;
             uint16_t named_idx = 0;
             qemu_irq input, output;
-            memset(&input, 0, sizeof(input));
 
             if (c) {
                 uint16_t range = c->range ? c->range : 1;
