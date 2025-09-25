@@ -1092,13 +1092,15 @@ static void xilinx_qspips_write(void *opaque, hwaddr addr,
             uint32_t src = q->lqspi_src;
             uint32_t dst = q->lqspi_dst;
             uint32_t btt = q->lqspi_size;
+            g_autofree uint8_t *lqspi_hack_buf = NULL;
+
+            lqspi_hack_buf = g_malloc(LQSPI_HACK_CHUNK_SIZE);
 
             assert(!(btt % LQSPI_HACK_CHUNK_SIZE));
             fprintf(stderr, "QEMU: Syncing LQSPI - this may be slow "
                     "(1 \".\" / MByte):");
 
             while (btt) {
-                uint8_t lqspi_hack_buf[LQSPI_HACK_CHUNK_SIZE];
                 dma_memory_read(q->hack_as, src, lqspi_hack_buf,
                                 LQSPI_HACK_CHUNK_SIZE, MEMTXATTRS_UNSPECIFIED);
                 dma_memory_write(q->hack_as, dst, lqspi_hack_buf,
