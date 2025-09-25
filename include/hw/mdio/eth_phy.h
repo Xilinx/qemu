@@ -46,7 +46,7 @@
 #define PHY_EXT_STATUS   0x0F /* Extended Status Reg */
 #define PHY_SPEC_CTRL    0x10 /* PHY Specific control reg */
 #define PHY_SPEC_STATUS  0x11 /* PHY Specific status reg */
-#define NUM_PHY_REGS     0x1F  /* 5 bit address bus (0-0x1F) */
+#define NUM_PHY_REGS     32  /* 5 bit address bus (0-0x1F) */
 
 /*Control Register bitfeild offsets*/
 #define PHY_CTRL_REG_UNIDIR_EN      5
