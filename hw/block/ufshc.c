@@ -528,7 +528,8 @@ static void start_tr_processing(UFSHCState *s)
      * Start Processing list
      */
     for (i = 0; i < s->num_tr_slots; i++) {
-        if (extract32(s->regs[R_UTRLDBR], i, 1)) {
+        if (extract32(s->regs[R_UTRLDBR], i, 1) &&
+                     (s->tr_list[i].rec.tt == 0)) {
             /*
              * Clear the OCS
              */
@@ -580,7 +581,7 @@ static void utrlrsr_postw(RegisterInfo *reg, uint64_t val)
     }
 }
 
-static void utrldbr_postw(RegisterInfo *reg, uint64_t val)
+static uint64_t utrldbr_prew(RegisterInfo *reg, uint64_t val)
 {
     UFSHCState *s = UFSHC(reg->opaque);
     unsigned int i;
@@ -600,12 +601,14 @@ static void utrldbr_postw(RegisterInfo *reg, uint64_t val)
                             sizeof(utp_tr_desc), false);
         }
     }
+    s->regs[R_UTRLDBR] |= val;
     if (ARRAY_FIELD_EX32(s->regs, UTRLRSR, UTRLRSR)) {
         start_tr_processing(s);
     }
+    return s->regs[R_UTRLDBR];
 }
 
-static void utmrldbr_postw(RegisterInfo *reg, uint64_t val)
+static uint64_t utmrldbr_prew(RegisterInfo *reg, uint64_t val)
 {
     UFSHCState *s = UFSHC(reg->opaque);
     unsigned int i;
@@ -625,6 +628,8 @@ static void utmrldbr_postw(RegisterInfo *reg, uint64_t val)
                             sizeof(utp_tmr_desc), false);
         }
     }
+    s->regs[R_UTMRLDBR] |= val;
+    return s->regs[R_UTMRLDBR];
 }
 
 static void utmrlclr_postw(RegisterInfo *reg, uint64_t val)
@@ -661,7 +666,8 @@ static void utmrlrsr_postw(RegisterInfo *reg, uint64_t val)
      * Start Processing list
      */
     for (i = 0; i < s->num_tmr_slots; i++) {
-        if (extract32(s->regs[R_UTMRLDBR], i, 1)) {
+        if (extract32(s->regs[R_UTMRLDBR], i, 1) &&
+                     (s->tmr_list[i].rec.tt == 0)) {
             memset(&tmr_upiu, 0, sizeof(upiu_pkt));
             /*
              * Send UPIU to target
@@ -717,7 +723,7 @@ static const RegisterAccessInfo ufshc_reg_info[] = {
          .rsvd = 0x3ff,
     },{  .name = "UTRLBAU", .addr = A_UTRLBAU,
     },{  .name = "UTRLDBR", .addr = A_UTRLDBR,
-         .post_write = utrldbr_postw,
+         .pre_write = utrldbr_prew,
     },{  .name = "UTRLCLR", .addr = A_UTRLCLR,
          .post_write = utrlclr_postw,
     },{  .name = "UTRLRSR", .addr = A_UTRLRSR,
@@ -727,7 +733,7 @@ static const RegisterAccessInfo ufshc_reg_info[] = {
          .rsvd = 0x3ff,
     },{  .name = "UTMRLBAU", .addr = A_UTMRLBAU,
     },{  .name = "UTMRLDBR", .addr = A_UTMRLDBR,
-         .post_write = utmrldbr_postw,
+         .pre_write = utmrldbr_prew,
     },{  .name = "UTMRLCLR", .addr = A_UTMRLCLR,
          .post_write = utmrlclr_postw,
     },{  .name = "UTMRLRSR", .addr = A_UTMRLRSR,
