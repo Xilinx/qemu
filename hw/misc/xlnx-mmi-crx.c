@@ -77,6 +77,9 @@ REG32(MMI_GPU_REF_CTRL, 0x100)
 REG32(MMI_DBG_REF_CTRL, 0x108)
     FIELD(MMI_DBG_REF_CTRL, CLKACT, 25, 1)
     FIELD(MMI_DBG_REF_CTRL, DIVISOR0, 8, 10)
+REG32(MMI_AUX0_REF_CTRL, 0x110)
+REG32(MMI_AUX1_REF_CTRL, 0x114)
+REG32(MMI_AUX2_REF_CTRL, 0x118)
 REG32(SAFETY_CHK, 0x150)
 REG32(RST_DBG, 0x300)
     FIELD(RST_DBG, RESET, 0, 1)
@@ -204,6 +207,15 @@ static const RegisterAccessInfo mmi_crx_regs_info[] = {
         .reset = 0x2500,
         .rsvd = 0xfdfc00ff,
         .ro = 0xfdfc00ff,
+    },{ .name = "MMI_AUX0_REF_CTRL", .addr = A_MMI_AUX0_REF_CTRL,
+        .reset = 0x02002500,
+        .rsvd = 0xfdfc00ff,
+    },{ .name = "MMI_AUX1_REF_CTRL", .addr = A_MMI_AUX1_REF_CTRL,
+        .reset = 0x02002500,
+        .rsvd = 0xfdfc00ff,
+    },{ .name = "MMI_AUX2_REF_CTRL", .addr = A_MMI_AUX2_REF_CTRL,
+        .reset = 0x02002500,
+        .rsvd = 0xfdfc00ff,
     },{ .name = "SAFETY_CHK",  .addr = A_SAFETY_CHK,
     },{ .name = "RST_DBG",  .addr = A_RST_DBG,
         .reset = 0x1,
