@@ -362,7 +362,7 @@ static const MemoryRegionOps sse_counter_control_ops = {
     .write = sse_counter_control_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid.min_access_size = 4,
-    .valid.max_access_size = 4,
+    .valid.max_access_size = 8,
 };
 
 static const MemoryRegionOps sse_counter_status_ops = {
@@ -370,7 +370,7 @@ static const MemoryRegionOps sse_counter_status_ops = {
     .write = sse_counter_status_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid.min_access_size = 4,
-    .valid.max_access_size = 4,
+    .valid.max_access_size = 8,
 };
 
 static void sse_counter_reset(DeviceState *dev)
