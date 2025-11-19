@@ -179,11 +179,13 @@ typedef struct SPARTANUP_PMC_GLOBAL {
     qemu_irq rst_spare;
     qemu_irq rst_ccu;
     qemu_irq rst_puf;
+    qemu_irq rst_pl_cpu;
     qemu_irq efuse_key_lock;
     qemu_irq family_key_lock;
 
     int init_b;
     bool soft_reset;
+    bool rst_pl_cpu_out;
     uint32_t regs[SPARTANUP_PMC_GLOBAL_R_MAX];
     RegisterInfo regs_info[SPARTANUP_PMC_GLOBAL_R_MAX];
 } SPARTANUP_PMC_GLOBAL;
@@ -194,6 +196,14 @@ static void spartanup_pmc_init_b_update(void *opaque, int n, int level)
 
     s->init_b = level;
     ARRAY_FIELD_DP32(s->regs, PINS_STATUS, INIT_B, s->init_b ? 1 : 0);
+}
+
+static void spartanup_pmc_global_done_pin_handler(void *opaque, int n, int level)
+{
+    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(opaque);
+
+    ARRAY_FIELD_DP32(s->regs, PINS_STATUS, DONE, level ? 1 : 0);
+    qemu_set_irq(s->rst_pl_cpu, !level);
 }
 
 /* Secure Stream Switch related implementation.  */
@@ -506,6 +516,7 @@ static void spartanup_pmc_global_reset_enter(Object *obj, ResetType type)
 
     ARRAY_FIELD_DP32(s->regs, PINS_STATUS, INIT_B, s->init_b ? 1 : 0);
     s->soft_reset = false;
+    qemu_set_irq(s->rst_pl_cpu, !s->rst_pl_cpu_out);
 }
 
 static const MemoryRegionOps spartanup_pmc_global_ops = {
@@ -605,11 +616,14 @@ static void spartanup_pmc_global_init(Object *obj)
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ccu, "rst-ccu", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_puf, "rst-puf", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_spare, "rst-spare", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pl_cpu, "rst-pl-cpu", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->efuse_key_lock,
                                     "efuse-key-lock", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->family_key_lock,
                              "family-key-lock", 1);
     qdev_init_gpio_in_named(DEVICE(obj), spartanup_pmc_init_b_update, "init_b", 1);
+    qdev_init_gpio_in_named(DEVICE(obj), spartanup_pmc_global_done_pin_handler,
+                            "done_pin", 1);
 
     s->soft_reset = false;
     /*
@@ -640,6 +654,7 @@ static const FDTGenericGPIOSet spartanup_pmc_rst_gpios[] = {
             { .name = "rst-ccu", .fdt_index = 3, .range = 1 },
             { .name = "rst-puf", .fdt_index = 4, .range = 1 },
             { .name = "rst-spare", .fdt_index = 5, .range = 1 },
+            { .name = "rst-pl-cpu", .fdt_index = 6, .range = 1 },
             { .name = "efuse-key-lock", .fdt_index = 50, .range = 1},
             { .name = "family-key-lock", .fdt_index = 51, .range = 1},
             { },
@@ -659,6 +674,10 @@ static const FDTGenericGPIOSet spartanup_pmc_status_pin_gpios[] = {
     { },
 };
 
+static const Property spartanup_pmc_global_properties[] = {
+    DEFINE_PROP_BOOL("rst-pl-cpu-out", SPARTANUP_PMC_GLOBAL, rst_pl_cpu_out, false),
+};
+
 static void spartanup_pmc_global_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -670,6 +689,7 @@ static void spartanup_pmc_global_class_init(ObjectClass *klass, const void *data
     rc->phases.enter = spartanup_pmc_global_reset_enter;
     fggc->client_gpios = spartanup_pmc_status_pin_gpios;
     fggc->controller_gpios = spartanup_pmc_rst_gpios;
+    device_class_set_props(dc, spartanup_pmc_global_properties);
 }
 
 static const TypeInfo spartanup_pmc_global_info = {

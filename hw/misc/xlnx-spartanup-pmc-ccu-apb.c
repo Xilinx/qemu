@@ -202,9 +202,11 @@ typedef struct CCU_APB {
     MemoryRegion wr_stream;
     qemu_irq irq_ccu_imr;
     qemu_irq init_b;
+    qemu_irq done_pin;
 
     CharFrontend chr;
     uint32_t regs[CCU_APB_R_MAX];
+    uint32_t bitstream_footer_data[2];
     RegisterInfo regs_info[CCU_APB_R_MAX];
 } CCU_APB;
 
@@ -299,6 +301,13 @@ static uint64_t ccu_command_prew(RegisterInfo *reg, uint64_t val)
 
     /* Write protection.  */
     return ccu_write_locked(s) ? s->regs[R_COMMAND] : val;
+}
+
+static void ccu_cfg_status_postw(RegisterInfo *reg, uint64_t val)
+{
+    CCU_APB *s = XILINX_CCU_APB(reg->opaque);
+    bool done = ARRAY_FIELD_EX32(s->regs, CFG_STATUS, DONE);
+    qemu_set_irq(s->done_pin, done);
 }
 
 static void ccu_command_postw(RegisterInfo *reg, uint64_t val)
@@ -411,6 +420,7 @@ static void ccu_apb_stream_write(void *opaque, hwaddr addr, uint64_t value,
                                  unsigned size)
 {
     CCU_APB *s = XILINX_CCU_APB(opaque);
+    uint32_t val = value;
 
     /*
      * Getting back the configuration is not modelled.  So don't model the
@@ -420,6 +430,18 @@ static void ccu_apb_stream_write(void *opaque, hwaddr addr, uint64_t value,
     if (qemu_chr_fe_get_driver(&s->chr)) {
         qemu_chr_fe_printf(&s->chr, "%08x\n", (unsigned int)value);
         qemu_chr_fe_printf(&s->chr, "\n");
+    }
+
+    /*
+     * Simulate DONE pin going high after bitstream write.
+     */
+    s->bitstream_footer_data[0] = s->bitstream_footer_data[1];
+    s->bitstream_footer_data[1] = val;
+    if (s->bitstream_footer_data[0] == 0x30008001 &&
+        s->bitstream_footer_data[1] == 0x0000000d) {
+        ARRAY_FIELD_DP32(s->regs, CFG_STATUS, DONE, 1);
+        ccu_cfg_status_postw(&s->regs_info[R_CFG_STATUS],
+                             s->regs[R_CFG_STATUS]);
     }
 }
 
@@ -464,6 +486,7 @@ static void ccu_apb_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_ccu_imr);
 
     qdev_init_gpio_out_named(DEVICE(obj), &s->init_b, "init_b", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->done_pin, "done_pin", 1);
 }
 
 static const Property ccu_apb_props[] = {
@@ -485,6 +508,7 @@ static const FDTGenericGPIOSet ccu_apb_gpios[] = {
         .names = &fdt_generic_gpio_name_set_gpio,
         .gpios = (FDTGenericGPIOConnection[]) {
             { .name = "init_b", .fdt_index = 0, .range = 1 },
+            { .name = "done_pin", .fdt_index = 1, .range = 1 },
             { },
         },
     },
