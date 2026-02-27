@@ -445,6 +445,10 @@ static void spartanup_pmc_efuse_key_sync(SPARTANUP_PMC_EFUSE *s)
     } key;
     int i;
 
+    if (!s->aes_key_sink) {
+        return;
+    }
+
     /* First of all check that the AES key is enabled.  */
     if (!ARRAY_FIELD_EX32(s->regs, STATUS, EFUSE_0_TBIT)) {
         return;
@@ -846,11 +850,6 @@ static void spartanup_pmc_efuse_realize(DeviceState *dev, Error **errp)
 
     if (!s->efuse) {
         error_setg(errp, "%s: no XLNX-EFUSE provided", prefix);
-        return;
-    }
-
-    if (!s->aes_key_sink) {
-        error_setg(errp, "%s: eFuse AES key sink not connected", prefix);
         return;
     }
 }
