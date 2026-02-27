@@ -490,7 +490,7 @@ static void ccu_apb_init(Object *obj)
 }
 
 static const Property ccu_apb_props[] = {
-        DEFINE_PROP_CHR("chardev", CCU_APB, chr),
+        DEFINE_PROP_CHR("chardev-ccu", CCU_APB, chr),
 };
 
 static const VMStateDescription vmstate_ccu_apb = {
