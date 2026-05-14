@@ -134,6 +134,10 @@ static ssize_t net_slirp_receive(NetClientState *nc, const uint8_t *buf, size_t 
 {
     SlirpState *s = DO_UPCAST(SlirpState, nc, nc);
 
+    if (size > NET_BUFSIZE) {
+        return -1;
+    }
+
     slirp_input(s->slirp, buf, size);
 
     return size;
