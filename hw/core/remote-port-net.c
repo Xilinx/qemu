@@ -178,7 +178,7 @@ static void rp_net_init(Object *obj)
 
     object_property_add_link(obj, "rp-adaptor0", "remote-port",
                              (Object **)&s->rx.rp,
-                             qdev_prop_allow_set_link,
+                             object_property_allow_set_link,
                              OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "rp-adaptor1", "remote-port",
                              (Object **)&s->tx.rp,
