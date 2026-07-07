@@ -27,6 +27,7 @@ endif
 NAMES += hwprofile
 NAMES += cache
 NAMES += drcov
+NAMES += mb_cycles
 
 ifeq ($(CONFIG_WIN32),y)
 SO_SUFFIX := .dll

@@ -31,12 +31,55 @@
 #include "net/net.h"
 #include "hw/block/flash.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/runstate.h"
+#include "qemu/timer.h"
 #include "hw/boards.h"
 #include "hw/misc/unimp.h"
 #include "exec/address-spaces.h"
 #include "hw/char/xilinx_uartlite.h"
 
 #include "boot.h"
+
+/* Exit-and-counter device at 0xFF000000 (4 KB region):
+ *
+ *   0xFF000000  W: write 0 → clean shutdown, nonzero → panic exit
+ *   0xFF000004  R: low  32 bits of QEMU virtual clock (ns; = icount with -icount 0)
+ *   0xFF000008  R: high 32 bits of QEMU virtual clock (ns)
+ *
+ * The bare-metal runtime reads the counter at program start and end and
+ * prints the delta so GCC vs Clang instruction counts can be compared.
+ * With -icount 0 each instruction advances the clock by 1 ns, so the
+ * delta equals the instruction count exactly.
+ */
+#define MB_EXIT_BASEADDR 0xFF000000
+
+static uint64_t mb_exit_read(void *opaque, hwaddr addr, unsigned int size)
+{
+    int64_t ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    switch (addr) {
+    case 4:  return (uint64_t)(uint32_t)(ns);        /* lo */
+    case 8:  return (uint64_t)(uint32_t)(ns >> 32);  /* hi */
+    default: return 0;
+    }
+}
+
+static void mb_exit_write(void *opaque, hwaddr addr,
+                          uint64_t val, unsigned int size)
+{
+    if (val == 0) {
+        qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_GUEST_SHUTDOWN, 0);
+    } else {
+        qemu_system_shutdown_request_with_code(SHUTDOWN_CAUSE_GUEST_PANIC,
+                                               (int)(val & 0xFF));
+    }
+}
+
+static const MemoryRegionOps mb_exit_ops = {
+    .read  = mb_exit_read,
+    .write = mb_exit_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4 },
+};
 
 #define LMB_BRAM_SIZE  (128 * KiB)
 #define FLASH_SIZE     (16 * MiB)
@@ -124,6 +167,12 @@ petalogix_s3adsp1800_init(MachineState *machine)
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq[ETHLITE_IRQ]);
 
     create_unimplemented_device("gpio", GPIO_BASEADDR, 0x10000);
+
+    /* Exit register: firmware writes here to terminate simulation early. */
+    MemoryRegion *exit_mr = g_new(MemoryRegion, 1);
+    memory_region_init_io(exit_mr, NULL, &mb_exit_ops, NULL,
+                          "mb-exit", 0x1000);
+    memory_region_add_subregion(sysmem, MB_EXIT_BASEADDR, exit_mr);
 
     microblaze_load_kernel(cpu, ddr_base, ram_size,
                            machine->initrd_filename,
