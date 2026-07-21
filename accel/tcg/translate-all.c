@@ -303,12 +303,17 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
 
     phys_pc = get_page_addr_code_hostp(env, pc, &host_pc);
 
-    if (phys_pc == -1) {
-        /* XILINX. Allow prefetching more than 1 inst from MMIO */
-        /* Generate a one-shot TB with 1 insn in it */
-        cflags = (cflags & ~CF_COUNT_MASK);
-    }
-
+    /*
+     * XILINX: mainline QEMU generates a one-shot TB with a single
+     * insn when the code page is not directly addressable
+     * (phys_pc == -1); this fork instead allows translating more
+     * than one instruction from MMIO. An explicitly requested
+     * instruction count (for example an icount budget refill
+     * asking for exactly N insns) must be preserved in both
+     * cases: clearing it regenerates an oversized TB that can
+     * never fit the remaining budget, livelocking the machine
+     * with the virtual clock frozen.
+     */
     max_insns = cflags & CF_COUNT_MASK;
     if (max_insns == 0) {
         max_insns = TCG_MAX_INSNS;
