@@ -291,6 +291,10 @@ static bool gpio_eq(const HwDtbResolvedGPIO *a, const HwDtbResolvedGPIO *b)
         return true;
     }
 
+    if ((a->name == NULL) || (b->name == NULL)) {
+        return false;
+    }
+
     return !strcmp(a->name, b->name);
 }
 
