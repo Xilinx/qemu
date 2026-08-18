@@ -62,6 +62,7 @@ struct SMMUv3State {
     uint64_t atos_sid;
     uint64_t atos_addr;
     uint64_t atos_par;
+    uint8_t oas_width;
 
     SMMUQueue eventq, cmdq;
 

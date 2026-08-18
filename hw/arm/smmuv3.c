@@ -288,7 +288,10 @@ static void smmuv3_init_regs(SMMUv3State *s)
     s->idr[3] = FIELD_DP32(s->idr[3], IDR3, RIL, 1);
     s->idr[3] = FIELD_DP32(s->idr[3], IDR3, BBML, 2);
 
-    s->idr[5] = FIELD_DP32(s->idr[5], IDR5, OAS, SMMU_IDR5_OAS); /* 44 bits */
+    /* OAS from oas-width property (44 or 48 bits). */
+    s->idr[5] = FIELD_DP32(s->idr[5], IDR5, OAS,
+                           s->oas_width == 48 ? SMMU_IDR5_OAS_48 :
+                                                SMMU_IDR5_OAS_44);
     /* 4K, 16K and 64K granule support */
     s->idr[5] = FIELD_DP32(s->idr[5], IDR5, GRAN4K, 1);
     s->idr[5] = FIELD_DP32(s->idr[5], IDR5, GRAN16K, 1);
@@ -2108,6 +2111,11 @@ static void smmu_realize(DeviceState *d, Error **errp)
     SysBusDevice *dev = SYS_BUS_DEVICE(d);
     Error *local_err = NULL;
 
+    if (s->oas_width != 44 && s->oas_width != 48) {
+        error_setg(errp, "oas-width must be 44 or 48");
+        return;
+    }
+
     c->parent_realize(d, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
@@ -2203,6 +2211,7 @@ static const Property smmuv3_properties[] = {
      * Defaults to stage 1
      */
     DEFINE_PROP_STRING("stage", SMMUv3State, stage),
+    DEFINE_PROP_UINT8("oas-width", SMMUv3State, oas_width, 44),
 };
 
 static void smmuv3_instance_init(Object *obj)
@@ -2263,6 +2272,9 @@ static void smmuv3_class_init(ObjectClass *klass, const void *data)
     device_class_set_parent_realize(dc, smmu_realize,
                                     &c->parent_realize);
     device_class_set_props(dc, smmuv3_properties);
+    object_class_property_set_description(klass, "oas-width",
+        "Output Address Size in bits. Supported values are 44 or 48. "
+        "Defaults to 44 bits");
     dc->hotpluggable = false;
     dc->user_creatable = true;
     fmc->parse_reg = smmu_parse_reg;
