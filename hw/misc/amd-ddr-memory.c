@@ -32,7 +32,7 @@ static void amd_ddr_memory_realize(DeviceState *dev, Error **errp)
 #endif
     }
 
-    name = g_strdup_printf("ddr@0x%" PRIx64, (uint64_t)s->address);
+    name = g_strdup_printf("_ddr@0x%" PRIx64, (uint64_t)s->address);
 
     switch (s->shared) {
     case ON_OFF_AUTO_OFF:
