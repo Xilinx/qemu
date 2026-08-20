@@ -3358,6 +3358,11 @@ typedef struct PMCSysMon {
 
     Object *tamper_sink;
 
+    uint32_t *additional_volt_meas;
+    uint32_t additional_volt_meas_len;
+    uint32_t *additional_temp_meas;
+    uint32_t additional_temp_meas_len;
+
     char *meas_file;         /* Defer set by -global option */
 
     double default_volt;

@@ -5682,9 +5682,21 @@ static void pmc_sysmon_root_infer(PMCSysMon *s)
         pmc_sysmon_temp_infer(s, &info);
     }
 
-    for (i = 0; i < ARRAY_SIZE(tid); i++) {
+    for (i = 0; i < ARRAY_SIZE(vid); i++) {
         info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_VCCINT;
         info.root_id = vid[i];
+        pmc_sysmon_volt_infer(s, &info);
+    }
+
+    for (i = 0; i < s->additional_temp_meas_len; i++) {
+        info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_TSENS;
+        info.root_id = s->additional_temp_meas[i];
+        pmc_sysmon_temp_infer(s, &info);
+    }
+
+    for (i = 0; i < s->additional_volt_meas_len; i++) {
+        info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_VCCINT;
+        info.root_id = s->additional_volt_meas[i];
         pmc_sysmon_volt_infer(s, &info);
     }
 }
@@ -6405,6 +6417,10 @@ static const Property pmc_sysmon_properties[] = {
                       qdev_prop_uint32, uint32_t),
     DEFINE_PROP_LINK("tamper-sink", PMCSysMon, tamper_sink,
                      TYPE_OBJECT, Object *),
+    DEFINE_PROP_ARRAY("additional-volt-measurements", PMCSysMon, additional_volt_meas_len,
+                      additional_volt_meas, qdev_prop_uint32, uint32_t),
+    DEFINE_PROP_ARRAY("additional-temp-measurements", PMCSysMon, additional_temp_meas_len,
+                      additional_temp_meas, qdev_prop_uint32, uint32_t),
 };
 
 static const VMStateDescription vmstate_pmc_sysmon = {
