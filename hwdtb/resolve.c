@@ -139,10 +139,10 @@ static const char *strip_vendor_prefix(const char *compat)
 
 static const char *substitute_char(const char *compat, char from, char to)
 {
-    char *needle = strchr(compat, from);
-    char *ret;
+    const char *found = strchr(compat, from);
+    char *ret, *needle;
 
-    if (needle == NULL) {
+    if (found == NULL) {
         return NULL;
     }
 
