@@ -429,3 +429,7 @@ xlnx_versal_pmc_crp_soft_reset(const char *subsys, bool val) "%s: %d"
 # xilinx-psxc-rpu-cluster-core.c
 xilinx_psxc_rpu_cluster_core_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
 xilinx_psxc_rpu_cluster_core_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
+
+# amd-cpm6-int-wrap-bot-csr.c
+cpm6_int_wrap_bot_csr_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
+cpm6_int_wrap_bot_csr_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
