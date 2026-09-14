@@ -433,3 +433,7 @@ xilinx_psxc_rpu_cluster_core_write(uint64_t addr, uint64_t value, unsigned int s
 # amd-cpm6-int-wrap-bot-csr.c
 cpm6_int_wrap_bot_csr_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
 cpm6_int_wrap_bot_csr_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
+
+# amd-cpm6-int-wrap-top-csr.c
+cpm6_int_wrap_top_csr_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
+cpm6_int_wrap_top_csr_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"

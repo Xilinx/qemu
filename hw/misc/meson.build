@@ -90,6 +90,7 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal-intfpd-config.c',
   'xlnx-versal-intlpd-config.c',
   'amd-cpm6-int-wrap-bot-csr.c',
+  'amd-cpm6-int-wrap-top-csr.c',
 ))
 
 system_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
