@@ -441,3 +441,7 @@ cpm6_int_wrap_top_csr_write(uint64_t addr, uint64_t value, unsigned int size) "a
 # amd-cpm6-gtmpw-npi.c
 amd_cpm6_gtmpw_npi_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
 amd_cpm6_gtmpw_npi_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
+
+# amd-cpm6-crx.c
+amd_cpm6_crx_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
+amd_cpm6_crx_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"

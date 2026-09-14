@@ -92,6 +92,7 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'amd-cpm6-int-wrap-bot-csr.c',
   'amd-cpm6-int-wrap-top-csr.c',
   'amd-cpm6-gtmpw-npi.c',
+  'amd-cpm6-crx.c',
 ))
 
 system_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
