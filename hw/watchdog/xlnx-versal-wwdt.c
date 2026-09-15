@@ -387,7 +387,7 @@ static uint32_t wwdt_irq_reload_val(WWDT *s, bool *success)
                                     shift;
     /* Make sure WINT can actually trigger within the second window */
     if (val > s->regs[R_SECOND_WINDOW_CONFIG_REG]) {
-        success = false;
+        *success = false;
         qemu_log_mask(LOG_GUEST_ERROR, "%s: WINT is set to trigger after "
                       "second window expires.\nSBC=0x%x BSS=0x%x window=0x%x\n",
                       object_get_canonical_path(OBJECT(s)),
@@ -970,7 +970,6 @@ static void wwdt_interrupt_enable_reg_postw(RegisterInfo *reg, uint64_t val64)
     WWDT *s = XLNX_WWDT(reg->opaque);
     uint32_t val = (uint32_t)val64;
 
-    val = ~val;
     s->regs[R_INTERRUPT_MASK_REG] &= ~val;
 }
 
