@@ -22,3 +22,11 @@ xilinx_asu_kv_raise_irq(void) ""
 xilinx_asu_kv_clear_key(const char *k) "%s"
 xilinx_asu_kv_lock_key(const char *k) "%s"
 xilinx_asu_kv_write_key(const char *k) "%s"
+
+# xlnx-pmxc-key-transfer-rp.c
+rp_kt_tx_asu_ready(unsigned int ready) "tx asu-ready=%u"
+rp_kt_tx_done(unsigned int done) "tx done=%u"
+rp_kt_tx_send_key(unsigned int n, unsigned int len) "tx key=%u len=%u"
+rp_kt_rx_asu_ready(unsigned int ready) "rx asu-ready=%u"
+rp_kt_rx_done(unsigned int done) "rx done=%u"
+rp_kt_rx_send_key(unsigned int n, unsigned int len) "rx key=%u len=%u"
