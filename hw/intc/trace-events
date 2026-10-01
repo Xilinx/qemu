@@ -330,3 +330,6 @@ loongarch_msi_set_irq(int irq_num) "set msi irq %d"
 loongarch_extioi_setirq(int irq, int level) "set extirq irq %d level %d"
 loongarch_extioi_readw(uint64_t addr, uint64_t val) "addr: 0x%"PRIx64 "val: 0x%" PRIx64
 loongarch_extioi_writew(uint64_t addr, uint64_t val) "addr: 0x%"PRIx64 "val: 0x%" PRIx64
+
+# xlnx-versal-ipi.c
+xlnx_versal_ipi_pmc_sync(uint32_t pending, int waits, uint32_t pmc_isr) "APU->PMC IPI sync: pending=0x%x waits=%d pmc_isr=0x%x"

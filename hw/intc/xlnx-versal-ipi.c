@@ -33,7 +33,11 @@
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 #include "qemu/log.h"
+#include "qemu/main-loop.h"
+#include "qemu/thread.h"
+#include "hw/core/cpu.h"
 #include "qapi/error.h"
+#include "trace.h"
 
 #ifndef XILINX_IPI_ERR_DEBUG
 #define XILINX_IPI_ERR_DEBUG 0
@@ -2150,10 +2154,43 @@ static uint64_t ipi_int_trig_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+/*
+ * Synchronize APU-to-PMC IPI0 requests in multi-arch.
+ *
+ * TF-A sends an IPI without waiting for completion and may reuse the shared
+ * request buffer before PLM reads it. This can lose a PM_SYSTEM_SHUTDOWN
+ * request, preventing PMC_SRST assertion and leaving the guest reboot hung.
+ *
+ * Wait for PLM to clear PMC_ISR.IPI0, subject to a bounded timeout.
+ * Release the BQL while waiting so the remote-port thread can update
+ * the interrupt status and wake the waiting vCPU.
+ */
+#define IPI_SYNC_WAIT_MS    5
+#define IPI_SYNC_MAX_WAITS  2000
+
+static QemuCond ipi_sync_cond;
+static bool ipi_sync_cond_inited;
+
+static void ipi_sync_cond_ensure(void)
+{
+    /* The BQL serializes initialization of the condition variable. */
+    if (!ipi_sync_cond_inited) {
+        qemu_cond_init(&ipi_sync_cond);
+        ipi_sync_cond_inited = true;
+    }
+}
+
 static void x_isr_postw(RegisterInfo *reg, uint64_t val64)
 {
     XlnxVersalIPI *s = XILINX_IPI(reg->opaque);
     x_update_irq(s);
+
+    /*
+     * Wake waiting vCPUs to recheck the pending interrupt status.
+     */
+    if (ipi_sync_cond_inited) {
+        qemu_cond_broadcast(&ipi_sync_cond);
+    }
 }
 
 static uint64_t x_ier_prew(RegisterInfo *reg, uint64_t val64)
@@ -2587,6 +2624,27 @@ static MemTxResult ipi_write(void *opaque, hwaddr addr,
     }
 
     register_write_memory(opaque, addr, data, size);
+
+    /*
+     * Wait for PMC_ISR.IPI0 to clear before allowing the vCPU to continue.
+     * Check for a pending interrupt on each trigger write so consecutive
+     * IPIs cannot bypass the wait.
+     */
+    if (addr == A_IPI0_TRIG && (data & R_IPI0_TRIG_PMC_MASK) && current_cpu) {
+        uint32_t pmc_ipi0_pending = s->regs[R_PMC_ISR] & R_PMC_ISR_IPI0_MASK;
+        int waits = 0;
+
+        if (pmc_ipi0_pending) {
+            ipi_sync_cond_ensure();
+            while ((s->regs[R_PMC_ISR] & pmc_ipi0_pending) &&
+                   waits++ < IPI_SYNC_MAX_WAITS) {
+                qemu_cond_timedwait_bql(&ipi_sync_cond, IPI_SYNC_WAIT_MS);
+            }
+        }
+        trace_xlnx_versal_ipi_pmc_sync(pmc_ipi0_pending, waits,
+                                       s->regs[R_PMC_ISR]);
+    }
+
     return MEMTX_OK;
 }
 
