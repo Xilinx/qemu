@@ -70,8 +70,9 @@ REG32(BBRAM_IDR, 0x44)
     FIELD(BBRAM_IDR, APB_SLVERR, 0, 1)
 REG32(BBRAM_MSW_LOCK, 0x4c)
     FIELD(BBRAM_MSW_LOCK, VAL, 0, 1)
+REG32(BBRAM_8_MEM, 0x50)
 
-#define R_MAX (R_BBRAM_MSW_LOCK + 1)
+#define R_MAX (R_BBRAM_8_MEM + 1)
 
 #define RAM_MAX (A_BBRAM_8 + 4 - A_BBRAM_0)
 
@@ -315,6 +316,13 @@ static uint64_t bbram_r8_postr(RegisterInfo *reg, uint64_t val)
     return s->bbram8_wo ? bbram_wo_postr(reg, val) : val;
 }
 
+static uint64_t bbram_r8_mem_postr(RegisterInfo *reg, uint64_t val)
+{
+    XlnxBBRam *s = XLNX_BBRAM(reg->opaque);
+
+    return s->regs[R_BBRAM_8];
+}
+
 static bool bbram_r8_readonly(XlnxBBRam *s)
 {
     return s->bbram8_wo ? !bbram_pgm_enabled(s) : bbram_msw_locked(s);
@@ -442,6 +450,9 @@ static RegisterAccessInfo bbram_ctrl_regs_info[] = {
     },{ .name = "BBRAM_MSW_LOCK",  .addr = A_BBRAM_MSW_LOCK,
         .pre_write = bbram_msw_lock_prew,
         .ro = ~R_BBRAM_MSW_LOCK_VAL_MASK,
+    },{ .name = "BBRAM_8_MEM",  .addr = A_BBRAM_8_MEM,
+        .post_read = bbram_r8_mem_postr,
+        .ro = 0xffffffff,
     }
 };
 
