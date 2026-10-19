@@ -15,6 +15,7 @@
 #include "qapi/error.h"
 #include "error.h"
 #include "trace.h"
+#include "system/system.h"
 
 static bool node_get_rp_descr(HwDtbNode *node, size_t idx,
                               uint32_t *rp_phandle, uint32_t *chan_idx)
@@ -79,6 +80,15 @@ static void node_attach_remote_port(HwDtbNode *node)
     }
 }
 
+static void remote_port_set_sync_quantum(HwDtbNode *node)
+{
+    DeviceState *dev = DEVICE(hwdtb_get_obj(node));
+
+    if (!hwdtb_node_has_prop(node, "sync-quantum") && global_sync_quantum) {
+        qdev_prop_set_uint64(dev, "sync-quantum", global_sync_quantum);
+    }
+}
+
 /*
  * Set the remote port prefix property to what it would have been in the legacy
  * code. It used to inherit from the QOM path of the remote port object. To keep
@@ -114,6 +124,7 @@ static void handle_remote_port_obj(HwDtbNode *node)
     if (HWDTB_NODE_AS(node, REMOTE_PORT_DEVICE)) {
         node_attach_remote_port(node);
     } else if (HWDTB_NODE_AS(node, REMOTE_PORT)) {
+        remote_port_set_sync_quantum(node);
         remote_port_set_legacy_prefix(node);
     }
 }
