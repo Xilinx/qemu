@@ -18,6 +18,8 @@
 #include "hw/qdev-properties.h"
 #include "hw/core/cpu.h"
 #include "hw/cpu/cluster.h"
+#include "system/memory.h"
+#include "migration/vmstate.h"
 #include "error.h"
 #include "trace.h"
 
@@ -80,11 +82,18 @@ static Object *select_cluster_for_cpu(HwDtbNode *cpu)
 static void parent_child_to_node(HwDtbNode *node, HwDtbNode *child)
 {
     g_autofree char *prop = NULL;
+    MemoryRegion *mr;
 
     /* parent the QOM child onto this QOM node */
     prop = get_child_prop_name(child);
     object_property_add_child(hwdtb_get_parenting_obj(node), prop, child->obj);
     object_unref(child->obj);
+
+    /* RAM can only be registered for migration once parenting names it */
+    mr = HWDTB_NODE_AS(child, MEMORY_REGION);
+    if (mr && memory_region_is_ram(mr) && !qemu_ram_is_shared(mr->ram_block)) {
+        vmstate_register_ram_global(mr);
+    }
 }
 
 static void parent_cpu_child(HwDtbNode *node, HwDtbNode *child)
