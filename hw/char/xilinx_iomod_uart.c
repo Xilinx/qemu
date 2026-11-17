@@ -244,9 +244,11 @@ static void xlx_iom_init(Object *obj)
 
 static const VMStateDescription vmstate_xlx_iom = {
     .name = TYPE_XILINX_IO_MODULE_UART,
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, XilinxUART, R_MAX_0),
+        VMSTATE_UINT32(baud, XilinxUART),
         VMSTATE_END_OF_LIST(),
     }
 };
