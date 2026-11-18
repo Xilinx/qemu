@@ -202,6 +202,8 @@ static void microblaze_cpu_set_irq(void *opaque, int irq, int level)
     int type = irq ? CPU_INTERRUPT_NMI : CPU_INTERRUPT_HARD;
 
     if (level) {
+        /* The model wakes on an interrupt, as if it were tied to Wakeup */
+        qemu_set_irq(cpu->mb_sleep, false);
         cpu_interrupt(cs, type);
     } else {
         cpu_reset_interrupt(cs, type);
