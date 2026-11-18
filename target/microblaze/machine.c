@@ -76,6 +76,7 @@ static const VMStateField vmstate_env_fields[] = {
     VMSTATE_UINT32(btarget, CPUMBState),
     VMSTATE_UINT32(imm, CPUMBState),
     VMSTATE_UINT32(iflags, CPUMBState),
+    VMSTATE_UINT32(wakeup, CPUMBState),
 
     VMSTATE_UINT32(res_val, CPUMBState),
     VMSTATE_UINT32(res_addr, CPUMBState),
@@ -100,7 +101,7 @@ static const VMStateField vmstate_cpu_fields[] = {
 
 const VMStateDescription vmstate_mb_cpu = {
     .name = "cpu",
-    .version_id = 0,
-    .minimum_version_id = 0,
+    .version_id = 1,
+    .minimum_version_id = 1,
     .fields = vmstate_cpu_fields,
 };

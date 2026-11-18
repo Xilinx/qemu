@@ -215,10 +215,12 @@ static void arm_gen_timer_init(Object *obj)
 
 static const VMStateDescription vmstate_arm_gen_timer = {
     .name = TYPE_ARM_GEN_TIMER,
-    .version_id = 1,
+    .version_id = 2,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, ARMGenTimer, R_MAX),
+        VMSTATE_BOOL_V(enabled, ARMGenTimer, 2),
+        VMSTATE_UINT64_V(tick_offset, ARMGenTimer, 2),
         VMSTATE_END_OF_LIST(),
     }
 };

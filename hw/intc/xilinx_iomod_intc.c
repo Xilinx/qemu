@@ -341,9 +341,13 @@ static int xilinx_iom_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
 
 static const VMStateDescription vmstate_xlx_iom = {
     .name = TYPE_XILINX_IO_MODULE_INTC,
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs0, XilinxIntC, R_MAX_0),
+        VMSTATE_UINT32_ARRAY(regs1, XilinxIntC, R_MAX_1),
+        VMSTATE_UINT32_ARRAY(regs2, XilinxIntC, R_MAX_2),
+        VMSTATE_UINT32(irq_raw, XilinxIntC),
         VMSTATE_END_OF_LIST(),
     }
 };

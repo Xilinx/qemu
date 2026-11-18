@@ -271,6 +271,18 @@ static const VMStateDescription vmstate_cpu_common_crash_occurred = {
     }
 };
 
+/* Always sent: the destination's reset may have set a pin */
+static const VMStateDescription vmstate_cpu_common_pins = {
+    .name = "cpu_common/pins",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_BOOL(reset_pin, CPUState),
+        VMSTATE_BOOL(halt_pin, CPUState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 const VMStateDescription vmstate_cpu_common = {
     .name = "cpu_common",
     .version_id = 1,
@@ -285,6 +297,7 @@ const VMStateDescription vmstate_cpu_common = {
     .subsections = (const VMStateDescription * const []) {
         &vmstate_cpu_common_exception_index,
         &vmstate_cpu_common_crash_occurred,
+        &vmstate_cpu_common_pins,
         NULL
     }
 };

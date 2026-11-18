@@ -375,11 +375,25 @@ static const Property zynqmp_boot_props[] = {
     DEFINE_PROP_DRIVE("drive", ZynqMPBoot, blk),
 };
 
+static const VMStateDescription vmstate_zynqmp_boot = {
+    .name = TYPE_XILINX_ZYNQMP_BOOT,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(state, ZynqMPBoot),
+        VMSTATE_BOOL(n_reset, ZynqMPBoot),
+        VMSTATE_BOOL(boot_ready, ZynqMPBoot),
+        VMSTATE_PTIMER(ptimer, ZynqMPBoot),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void zynqmp_boot_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = zynqmp_boot_realize;
+    dc->vmsd = &vmstate_zynqmp_boot;
     device_class_set_props(dc, zynqmp_boot_props);
     dc->unrealize = zynqmp_boot_unrealize;
 }

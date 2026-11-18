@@ -250,12 +250,39 @@ static void xlx_iom_pit_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq);
 }
 
-static const VMStateDescription vmstate_xlx_iom = {
-    .name = TYPE_XILINX_IO_MODULE_PIT,
+static bool xlx_iom_ptimer_needed(void *opaque)
+{
+    XilinxPIT *s = opaque;
+
+    /* (only a PIT in use has one) */
+    return s->ptimer != NULL;
+}
+
+static const VMStateDescription vmstate_xlx_iom_ptimer = {
+    .name = TYPE_XILINX_IO_MODULE_PIT "/ptimer",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .needed = xlx_iom_ptimer_needed,
+    .fields = (const VMStateField[]) {
+        VMSTATE_PTIMER(ptimer, XilinxPIT),
         VMSTATE_END_OF_LIST(),
+    }
+};
+
+static const VMStateDescription vmstate_xlx_iom = {
+    .name = TYPE_XILINX_IO_MODULE_PIT,
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, XilinxPIT, R_MAX),
+        VMSTATE_UINT32(ps_counter, XilinxPIT),
+        VMSTATE_BOOL(ps_enable, XilinxPIT),
+        VMSTATE_BOOL(ps_level, XilinxPIT),
+        VMSTATE_END_OF_LIST(),
+    },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_xlx_iom_ptimer,
+        NULL
     }
 };
 

@@ -221,9 +221,12 @@ static void xlx_iom_init(Object *obj)
 
 static const VMStateDescription vmstate_xlx_iom = {
     .name = TYPE_XILINX_IO_MODULE_GPI,
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, XilinxGPI, R_MAX),
+        VMSTATE_UINT32(ien, XilinxGPI),
+        VMSTATE_UINT32(sampled, XilinxGPI),
         VMSTATE_END_OF_LIST(),
     }
 };
